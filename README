@@ -1,0 +1,167 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=2535
+
+homepage: http://code.google.com/p/vim-cca/
+now you can use cca.vim and ctk.vim (http://vim-cca.googlecode.com/files/ctk.vim) implements all features of c.vim
+
+you can add yourself compiler at snippets file, and all the compilers can invoked by ctk.vim.
+
+in windows, you can compile and run, but now in unix, you can only compile : i can find a way to execute a program in a true-terminal. next version will solve this problem.
+
+ctk.vim is only in beta version now.
+
+if you have any good idea, please tell me at here: http://code.google.com/p/vim-cca/issues/list
+
+
+Useage:                                                                          
+                                                                                 
+    this is a re-code version of code_complete(new update)                       
+    (vimscript#2427) the                   
+    original version of code_complete is write by mingbai, at                    
+    (vimscript#1764)                       
+                                                                                 
+    this plugin mix the features of code_complete and snippetEmu,              
+    you can put the snippet file in the cca_snippets_folder (defaultly           
+    "snippets"), and put template file in cca_template_folder                    
+    (defaultly "templates"). then you can input a tigger word and a              
+    hotkey to complete. e.g: if the hotkey is <m-d> (Alt+d or Meta+d,            
+    i found this combine-key is easy to press :) ) and you has a                 
+    snippet named foo, when you input the "foo<m-d>", it maybe changed           
+    to: (which "|" is the position of your cursor)                               
+                                                                                 
+        foobar|                                                                  
+                                                                                 
+    cca support snippetsEmu-style named tag and command tag in your              
+    snippet (and template file). you can define the tag-mark youself,            
+    and it will be highlighted (if you open the built-in highlight               
+    function of Vim). this is a summary of the kinds of tag. (the tags           
+    will be highlighted special, if you open highlight. and suppose              
+    the cca_tagstart is "<{". the tagcommand is ':',  and the tagend             
+    is "}>")                                                                     
+                                                                                 
+        - cursor tag:   <{}> or <{:}> if you press hotkey, and next              
+                        tag is a empty tag, the cursor will move to              
+                        there.                                                   
+        - named tag:    <{foo}> after you press hotkey, the name of              
+                        the tag will selected, and if you input a text           
+                        to replace it, all tag has the same name with            
+                        current tag will be replaced to the same                 
+                        value.  e.g:  (the pipe is position of cursor)           
+                                                                                 
+                        |   <{foo:1}> is a <{foo:2}>.                            
+                                                                                 
+                        after you press <a-d> and input "bar"                    
+                        directly, it will changed to:                            
+                                                                                 
+                        bar| is a bar.                                           
+                                                                                 
+                        the :1 and :2 mark is for sign tags for                  
+                        regconize it when you make nest tags.                    
+                                                                                 
+        - identifier tag:                                                        
+                        cca must register tag's name and command for             
+                        replace nest tag correctlly.  if you can sure            
+                        the tag is only for name replace, user won't             
+                        make complete in it (that is, it will never be           
+                        a nest tag), and it didn't have any command,             
+                        you can just add a "cmd" mark after                      
+                        identifier.  e.g: <{i:}>. and cca won't                  
+                        register this tag.                                       
+                                                                                 
+        - command tag:  <{foo:1}>, or <{:1}> where "1" may be any                
+                        number. this is the command number in                    
+                        dictionary b:cca.tag_table. if this is a                 
+                        noname command tag, the command will calculate           
+                        immediately. and if it has a name, it will act           
+                        as a named tag, and calculate the command when           
+                        you leave the tag (goto the next tag).  the              
+                        "xt" snippet in common.vim is a noname command           
+                        tag, and "printf" in c_snippets.vim is a named           
+                        command tag.                                             
+                                                                                 
+                XXX:    you can complete at normal, select and insert            
+                        mode, but you must notice that the first char            
+                        of tag is not "in" the tag.  e.g: |<{A}> now             
+                        cursor is NOT in the tag A. so it is in normal           
+                        mode, so if you want to jump to next tag, you            
+                        should make sure the cursor is just in the tag           
+                                                                                 
+Options:                                                                         
+                                                                                 
+        cca_hotkey      this defined the hotkey for complete                     
+                                                                                 
+        cca_submitkey   this defined the submitkey.(that is, jump over           
+                        a line, and leave all tags in this line into             
+                        its default value).                                      
+                                                                                 
+        cca_tagstart                                                             
+        cca_tagend                                                               
+        cca_tagcommand  this defined the tag mark. and you can                   
+                        define them as buffer-variables.                         
+                                                                                 
+        cca_search_range                                                         
+                        this define the search range for tag jump.               
+                        defaultly it is 100, it means just search the            
+                        tags in 100 line under current line. if it set           
+                        to zero, only search tags in screen.                     
+                                                                                 
+        cca_filetype_ext_var                                                     
+                        this define the filetype buffer variable name.           
+                        snippets support this name to show the ext               
+                        name for specific filetype. it defaultly                 
+                        "ft_ext", and b:ft_ext will be used as a                 
+                        ext-name specified variable name.                        
+                                                                                 
+        cca_locale_tag_var                                                       
+                        this is a dictionary name for snippets file              
+                        show its locale tag marks. it has three item:            
+                        start, end and cmd. it defined tagstart,                 
+                        tagend and tagcommand in specified snippets              
+                        file.                                                    
+                                                                                 
+                XXX:    to use cca_filetype_ext_var and                          
+                        cca_locale_tag_var, see the specified snippets           
+                        files.                                                   
+                                                                                 
+        cca_snippets_folder                                                      
+        cca_template_folder                                                      
+                        these define the default folder where cca to             
+                        find the snippets files and template files. it           
+                        must be found at 'runtimepath'.                          
+                                                                                 
+        cca_auto_indent no use in this version                                   
+                                                                                 
+Command:                                                                         
+                                                                                 
+        StartComplete                                                            
+        StopComplete                                                             
+                        Start and stop the complete this will register           
+                        or unregister the key map and do some                    
+                        initialliztion or clean work.                            
+                                                                                 
+        DefineSnippet   define the snippets. each snippets file are              
+                        all combined with this command. the format is:           
+                        DefineSnippet {trigger word}: {complete text}            
+                        trigger word can be anything. it can have                
+                        space, can be a symbol. but if it have space             
+                        and have more than one symbol, when you input            
+                        it, you should add a "#" before it. e.g: now             
+                        we define a sinppet:                                     
+                                                                                 
+                DefineSnippet trigger with word: this is a trigger with <{}>word 
+                                                                                 
+                        then we can input:                                       
+                        #trigger with word<m-d>                                  
+                                                                                 
+                        then it will change to:                                  
+                        this is a trigger with |word                             
+                                                                                 
+                        the cursor is before "word"                              
+                                                                                 
+        RefreshSnippets refresh the current snippets file. if no                 
+                        filetype is set, this command will load                  
+                        "common.vim" in snippets folder. the snippets            
+                        file is under "filetype" folder in snippets              
+                        folder, or named "filetype_others.vim", which            
+                        others can be any words. all of snippets file            
+                        will load in.                                            
+
