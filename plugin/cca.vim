@@ -165,7 +165,7 @@
 if exists('loaded_cca')
     finish
 endif
-let loaded_cca = 'v0.2'
+let loaded_cca = 'v0.1'
 
 if v:version < 700
     echomsg "cca.vim requires Vim 7.0 or above."
@@ -175,7 +175,7 @@ endif
 " :%s/" \zeCCAtrace//g
 " :%s/^\s*\zsCCAtrace/" &/g
 " map <m-r> :exec '!start '.expand('%:p:h:h').'/run.cmd'<CR>
-" let s:debug = 1
+let s:debug = 1
 let old_cpo = &cpo
 set cpo&vim
 
@@ -274,6 +274,7 @@ command! -bar -bang StartComplete :call s:start_complete('<bang>')
 command! -bar StopComplete :call s:stop_complete()
 
 if exists('s:debug') && s:debug == 1
+    set noshowmode
     command! -nargs=+ CCAtrace echom 'cca: '.<args>
 else
     command! -nargs=+ CCAtrace
@@ -362,6 +363,11 @@ endfunction
 " the main complete function, will called immedially when you press the hotkey
 
 function! s:complete()
+    " special!
+    if b:cca.status.jump > 0
+        return ''
+    endif
+
     let b:cca.status.line = line('.')
     let b:cca.status.col = col('.')
     let ret = (g:cca_hotkey =~ '\c<tab>' ? "\<tab>" : '')
@@ -372,7 +378,7 @@ function! s:complete()
 
     " if has '(', it's a function complete
     if !empty(mlist) && mlist[3] != ''
-        let text = s:function_complete(mlist[4])
+        let text = s:function_complete(mlist[2])
         return text != '' ? text : ret
     endif
 
@@ -395,12 +401,15 @@ endfunction
 " s:submit {{{2
 
 function! s:submit()
-    let line = (b:cca.status.will_jump ? b:cca.status.line : line('.'))
+    let line = (b:cca.status.jump > 0 ? b:cca.status.line : line('.'))
 
-    silent! exec 'norm! '.s:jump_next()
-    while line('.') == line && b:cca.status.has_jump
-        silent! exec 'norm! '.s:jump_next()
-    endwhile
+    try
+        exec 'norm! '.s:jump_next()
+        while line('.') == line
+            exec 'norm! '.s:jump_next()
+        endwhile
+    catch
+    endtry
 
     return line('.') == line ? "\<C-\>\<C-N>$a" : ''
 endfunction
@@ -410,19 +419,23 @@ endfunction
 " jump to next tag and calculate command section of tag, if need.
 
 function! s:jump_next()
+    " special!
+    if b:cca.status.jump < 0
+        let b:cca.status.jump = 1
+        return ''
+    endif
+
     " CCAtrace 'jump_next() line: '.getline('.')
     call setpos("''", getpos('.'))
-    let b:cca.status.has_jump = 0
 
-    if b:cca.status.will_jump
-        let b:cca.status.will_jump = 0
+    if b:cca.status.jump > 0
+        let b:cca.status.jump = 0
         call cursor(b:cca.status.line, b:cca.status.col)
     endif
 
     let bound = s:get_tag_bound()
     " CCAtrace 'jump_next: bound:'.string(bound)
     if bound[1] == 0 || bound[1] == -2
-        let b:cca.status.has_jump = 1
         let bound = s:replace_tags(bound)
     endif
 
@@ -435,7 +448,6 @@ function! s:jump_next()
 
     " CCAtrace 'jump_next: tag:'.getline('.')[pair[0]-1:pair[1]-1]
     " get tag information
-    let b:cca.status.has_jump = 1
     let info = s:get_tag_info(pair)
     " CCAtrace 'jump_next: info:'.string(info)
 
@@ -461,9 +473,7 @@ function! s:jump_next()
 
     " no command, and no name, just jump to there
     call s:select_text(pair)
-    norm! gvc
-    call cursor(0, pair[0])
-    return ''
+    return "\<c-\>\<c-n>gvc"
 endfunction
 
 " }}}2
@@ -474,10 +484,10 @@ endfunction
 " function complete {{{2
 
 function! s:function_complete(word)
-    " CCAtrace 'function_complete() called word='.a:word
+    CCAtrace 'function_complete() called word='.a:word
     let sig_list = []
     let sig_word = {}
-    let ftags = taglist('^'.a:word.'$')
+    let ftags = taglist('^\V'.escape(a:word, '\').'\$')
 
     " CCAtrace 'function_complete() tag='.string(ftags)
     " if can't find the function
@@ -496,7 +506,7 @@ function! s:function_complete(word)
                     \ || match(item.signature, '^(\s*\%(void\)\=\s*)$') >= 0
             continue
         endif
-        let sig = s:process_signature(item.signature)
+        let sig = s:process_signature(item.signature).cca:make_tag()
         if !has_key(sig_word, sig)
             let sig_word[sig] = 0
             let sig_list += [{'word': sig, 'menu': item.filename}]
@@ -505,7 +515,7 @@ function! s:function_complete(word)
 
     " only one list find, that is we need!
     if len(sig_list) == 1
-        let b:cca.status.will_jump = 1
+        let b:cca.status.jump = 1
         return sig_list[0].word
     endif
 
@@ -515,6 +525,7 @@ function! s:function_complete(word)
     endif
 
     " make a complete menu
+    let b:cca.status.jump = -1
     call complete(col('.'), sig_list)
     return ''
 endfunction
@@ -541,7 +552,7 @@ function! s:template_complete(word)
 
         for expr in filter(split(mline, '\s*\\\@<!:\s*'),
                     \ '!empty(v:val) && v:val =~ "="')
-            let expr = s:unescape(expr, ':')
+            let expr = substitute(expr, '\:', ':', 'g')
             silent! sandbox exec 'let tag_marks.'.expr
         endfor
         call remove(tlist, 0)
@@ -620,7 +631,7 @@ function! cca:format_tag(end)
     if !empty(cmd)
         if a:end != te
             let cmd = substitute(cmd, b:cca.pat.end, '\'.te, 'g')
-            let cmd = s:unescape(cmd, '\V'.escape(a:end, '\'))
+            let cmd = substitute(cmd, '\\\V'.escape(a:end, '\'), a:end, 'g')
         endif
         let cmd = b:cca.tag.cmd . cmd
     endif
@@ -640,12 +651,8 @@ function! cca:register_tag()
     endwhile
 
     if info[1] != '' || (info[0] != '' && info[2] != '')
-        let dict[idx] = [info[0], '']
-        if info[1] == '#'
-            call add(dict[idx], 1)
-        endif
-
-        let dict[idx][1] = s:unescape(info[1], '\('.b:cca.pat.end.'|#)')
+        let dict[idx] = [info[0], substitute(info[1], '\\'.b:cca.pat.end,
+                    \ b:cca.tag.end, 'g')]
         let cmd = b:cca.tag.cmd . idx
     endif
 
@@ -676,13 +683,6 @@ function! s:strtrim(str)
 endfunction
 
 " }}}2
-" s:unescape {{{2
-
-function! s:unescape(str, token)
-    return substitute(a:str, '\\\ze'.a:token, '', 'g')
-endfunction
-
-" }}}2
 " s:encode s:decode {{{2
 " s:encode allows the use of special characters in snippets
 function! s:encode(text)
@@ -708,12 +708,14 @@ function! s:create_bufinfo()
 
     " the status of complete, 
     " cur_tag is the current tag's name
-    " will_jump shows whether jump to the head before jump_next, 
+    " jump shows whether jump to the head before jump_next, 
+    " >0: jump to the status.line and col
+    " 0: do not jump, just find tags at current position
+    " <0: pass the chance to jump_next()
     " line and col is the position of begining of complete, 
     let b:cca.status = {
                 \ 'cur_tag': "",
-                \ 'will_jump': 0,
-                \ 'has_jump': 0,
+                \ 'jump': 0,
                 \ 'line': 0,
                 \ 'col': 0}
 
@@ -749,7 +751,7 @@ function! s:define_snippets(cmd)
     endif
 
     " calculate the name and value
-    let name = s:encode(s:strtrim(s:unescape(mlist[1], '\s')))
+    let name = s:encode(s:strtrim(substitute(mlist[1], '\\\ze\s', '', 'g')))
     let value = s:strtrim(mlist[2])
 
     " format the tag, if needed
@@ -1178,7 +1180,7 @@ function! s:process_call(mlist)
             let text = call(func, [a:mlist[2]])
             if text != ''
                 let b:cca.status.col -= wlen
-                let b:cca.status.will_jump = 1
+                let b:cca.status.jump = 1
 
                 call s:delete_text(wlen)
                 let s:text = text
@@ -1206,7 +1208,7 @@ function! s:process_signature(sig)
             let level += (ch == '(' ? 1 : (ch == ')' ? -1 : 0 ))
         endif
     endfor
-    return res.b:cca.tag.end.')'.cca:make_tag(';')
+    return res.b:cca.tag.end.')'
 endfunction
 
 " }}}2
