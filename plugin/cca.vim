@@ -165,7 +165,7 @@
 if exists('loaded_cca')
     finish
 endif
-let loaded_cca = 'v0.1'
+let loaded_cca = 'v0.2'
 
 if v:version < 700
     echomsg "cca.vim requires Vim 7.0 or above."
@@ -274,7 +274,6 @@ command! -bar -bang StartComplete :call s:start_complete('<bang>')
 command! -bar StopComplete :call s:stop_complete()
 
 if exists('s:debug') && s:debug == 1
-    set noshowmode
     command! -nargs=+ CCAtrace echom 'cca: '.<args>
 else
     command! -nargs=+ CCAtrace
@@ -398,13 +397,10 @@ endfunction
 function! s:submit()
     let line = (b:cca.status.will_jump ? b:cca.status.line : line('.'))
 
-    try
-        exec 'norm! '.s:jump_next()
-        while line('.') == line
-            exec 'norm! '.s:jump_next()
-        endwhile
-    catch
-    endtry
+    silent! exec 'norm! '.s:jump_next()
+    while line('.') == line && b:cca.status.has_jump
+        silent! exec 'norm! '.s:jump_next()
+    endwhile
 
     return line('.') == line ? "\<C-\>\<C-N>$a" : ''
 endfunction
@@ -416,6 +412,7 @@ endfunction
 function! s:jump_next()
     " CCAtrace 'jump_next() line: '.getline('.')
     call setpos("''", getpos('.'))
+    let b:cca.status.has_jump = 0
 
     if b:cca.status.will_jump
         let b:cca.status.will_jump = 0
@@ -425,6 +422,7 @@ function! s:jump_next()
     let bound = s:get_tag_bound()
     " CCAtrace 'jump_next: bound:'.string(bound)
     if bound[1] == 0 || bound[1] == -2
+        let b:cca.status.has_jump = 1
         let bound = s:replace_tags(bound)
     endif
 
@@ -437,6 +435,7 @@ function! s:jump_next()
 
     " CCAtrace 'jump_next: tag:'.getline('.')[pair[0]-1:pair[1]-1]
     " get tag information
+    let b:cca.status.has_jump = 1
     let info = s:get_tag_info(pair)
     " CCAtrace 'jump_next: info:'.string(info)
 
@@ -462,7 +461,9 @@ function! s:jump_next()
 
     " no command, and no name, just jump to there
     call s:select_text(pair)
-    return "\<c-\>\<c-n>gvc"
+    norm! gvc
+    call cursor(0, pair[0])
+    return ''
 endfunction
 
 " }}}2
@@ -540,7 +541,7 @@ function! s:template_complete(word)
 
         for expr in filter(split(mline, '\s*\\\@<!:\s*'),
                     \ '!empty(v:val) && v:val =~ "="')
-            let expr = substitute(expr, '\:', ':', 'g')
+            let expr = s:unescape(expr, ':')
             silent! sandbox exec 'let tag_marks.'.expr
         endfor
         call remove(tlist, 0)
@@ -619,7 +620,7 @@ function! cca:format_tag(end)
     if !empty(cmd)
         if a:end != te
             let cmd = substitute(cmd, b:cca.pat.end, '\'.te, 'g')
-            let cmd = substitute(cmd, '\\\V'.escape(a:end, '\'), a:end, 'g')
+            let cmd = s:unescape(cmd, '\V'.escape(a:end, '\'))
         endif
         let cmd = b:cca.tag.cmd . cmd
     endif
@@ -639,8 +640,12 @@ function! cca:register_tag()
     endwhile
 
     if info[1] != '' || (info[0] != '' && info[2] != '')
-        let dict[idx] = [info[0], substitute(info[1], '\\'.b:cca.pat.end,
-                    \ b:cca.tag.end, 'g')]
+        let dict[idx] = [info[0], '']
+        if info[1] == '#'
+            call add(dict[idx], 1)
+        endif
+
+        let dict[idx][1] = s:unescape(info[1], '\('.b:cca.pat.end.'|#)')
         let cmd = b:cca.tag.cmd . idx
     endif
 
@@ -668,6 +673,13 @@ endfunction
 
 function! s:strtrim(str)
     return matchstr(a:str, '^\s*\zs.\{-}\ze\s*$')
+endfunction
+
+" }}}2
+" s:unescape {{{2
+
+function! s:unescape(str, token)
+    return substitute(a:str, '\\\ze'.a:token, '', 'g')
 endfunction
 
 " }}}2
@@ -701,6 +713,7 @@ function! s:create_bufinfo()
     let b:cca.status = {
                 \ 'cur_tag': "",
                 \ 'will_jump': 0,
+                \ 'has_jump': 0,
                 \ 'line': 0,
                 \ 'col': 0}
 
@@ -736,7 +749,7 @@ function! s:define_snippets(cmd)
     endif
 
     " calculate the name and value
-    let name = s:encode(s:strtrim(substitute(mlist[1], '\\\ze\s', '', 'g')))
+    let name = s:encode(s:strtrim(s:unescape(mlist[1], '\s')))
     let value = s:strtrim(mlist[2])
 
     " format the tag, if needed
