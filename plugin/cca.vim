@@ -175,7 +175,7 @@ endif
 " :%s/" \zeCCAtrace//g
 " :%s/^\s*\zsCCAtrace/" &/g
 " map <m-r> :exec '!start '.expand('%:p:h:h').'/run.cmd'<CR>
-let s:debug = 1
+" let s:debug = 1
 let old_cpo = &cpo
 set cpo&vim
 
